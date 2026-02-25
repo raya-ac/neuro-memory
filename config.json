@@ -1,0 +1,61 @@
+{
+  "memory": {
+    "hierarchy": {
+      "working": {
+        "enabled": true,
+        "storage": "redis",
+        "redis_url": "redis://localhost:6379",
+        "max_tokens": 8000,
+        "ttl_seconds": 300,
+        "eviction": "lru"
+      },
+      "episodic": {
+        "enabled": true,
+        "retention_days": 90,
+        "auto_summarize": true,
+        "summarization_threshold": 100
+      },
+      "semantic": {
+        "enabled": true,
+        "neo4j_url": "bolt://localhost:7687",
+        "neo4j_user": null,
+        "neo4j_pass": null,
+        "entity_extraction": true,
+        "relationship_tracking": true
+      },
+      "procedural": {
+        "enabled": true,
+        "pattern_compilation": true,
+        "success_tracking": true
+      }
+    },
+    "predictive": {
+      "enabled": true,
+      "confidence_threshold": 0.7,
+      "max_prefetch_items": 10,
+      "learning_enabled": true
+    },
+    "lifecycle": {
+      "consolidation_schedule": "0 2 * * *",
+      "forgetting_curve": "ebbinghaus",
+      "importance_decay": 0.01,
+      "promotion_threshold": 0.7,
+      "demotion_threshold": 0.3
+    },
+    "performance": {
+      "target_latency_ms": 10,
+      "target_hit_rate": 0.95,
+      "max_memories": 1000000
+    }
+  },
+  "agents": {
+    "ava": {
+      "workspace": "/root/.openclaw/workspace-ava",
+      "priority": "high"
+    },
+    "eva": {
+      "workspace": "/root/.openclaw/workspace-eva",
+      "priority": "high"
+    }
+  }
+}

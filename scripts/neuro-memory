@@ -1,0 +1,340 @@
+#!/usr/bin/env python3
+"""
+NeuroMemory CLI - Unified command-line interface for the 4-layer cognitive memory system
+
+Usage:
+    neuro-memory <command> [options]
+
+Commands:
+    recall <agent> [query]     Search or recall memories
+    session <agent>            Get session startup context
+    recent <agent>             Show recent 24h memories
+    stats <agent>              Show memory statistics
+    health                     Check all 4 layers health
+    sync <agent>               Sync workspace files to memory
+    groom                      Run consolidation (promote, archive, cleanup)
+    task <agent> <cmd>         Task memory operations
+
+Examples:
+    neuro-memory session ava
+    neuro-memory recall eva "discord bot"
+    neuro-memory recent ava
+    neuro-memory stats eva
+    neuro-memory health
+    neuro-memory sync ava
+    neuro-memory groom
+"""
+
+import asyncio
+import sys
+import os
+import json
+from datetime import datetime
+from typing import Optional, List
+
+# Add memory-system to path
+sys.path.insert(0, '/root/.openclaw/memory-system')
+
+from core.manager import NeuroMemoryManager
+from core.base import MemoryLayer
+
+
+def print_header(title: str):
+    print("\n" + "=" * 60)
+    print(title)
+    print("=" * 60)
+
+
+def layer_icon(layer: str) -> str:
+    return {'working': '⚡', 'episodic': '📅', 'semantic': '🧠', 'procedural': '🔧'}.get(layer, '•')
+
+
+async def cmd_session(agent: str):
+    """Get session startup context"""
+    manager = NeuroMemoryManager()
+    await manager.connect()
+    
+    print(f"🧠 Recalling context for {agent.upper()}...\n")
+    
+    # Search for key context areas
+    context_queries = ["project status", "active work", "recent decisions", "important context", "user preferences"]
+    
+    all_results = []
+    for query in context_queries:
+        results = await manager.recall(query, limit=3)
+        for r in results:
+            if r.id not in [x.id for x in all_results]:
+                all_results.append(r)
+    
+    recent = await manager.recall_recent(hours=48, limit=10)
+    stats = await manager.get_stats()
+    
+    print_header("SESSION CONTEXT RECALL")
+    
+    print(f"\n📊 Memory Stats:")
+    print(f"   Working: {stats['working'].get('items_in_cache', 0)} items")
+    print(f"   Episodic: {stats['episodic'].get('total_memories', 0)} memories")
+    print(f"   Semantic: {stats['semantic'].get('memories', 0)} memories, {stats['semantic'].get('entities', 0)} entities")
+    print(f"   Procedural: {stats['procedural'].get('total_patterns', 0)} patterns")
+    
+    if all_results:
+        print(f"\n🎯 Relevant Context ({len(all_results)} items):")
+        for r in all_results[:10]:
+            icon = layer_icon(r.layer.value)
+            content = r.content[:150] + '...' if len(r.content) > 150 else r.content
+            source = r.metadata.get('source_file', '') if r.metadata else ''
+            print(f"   {icon} [{r.layer.value:10}] {content}")
+            if source:
+                print(f"      📁 {source}")
+    
+    if recent:
+        print(f"\n📅 Recent Memories (48h):")
+        for r in recent[:5]:
+            content = r.content[:100] + '...' if len(r.content) > 100 else r.content
+            print(f"   • {content}")
+    
+    print()
+    await manager.disconnect()
+
+
+async def cmd_recall(agent: str, query: str):
+    """Search memories"""
+    manager = NeuroMemoryManager()
+    await manager.connect()
+    
+    print(f"🔍 Searching memories for: '{query}'\n")
+    
+    results = await manager.recall(query, limit=15)
+    
+    if not results:
+        print("No results found.")
+    else:
+        print(f"Found {len(results)} results:\n")
+        for i, r in enumerate(results, 1):
+            icon = layer_icon(r.layer.value)
+            print(f"{i}. {icon} [{r.layer.value}] (importance: {r.importance:.2f})")
+            print(f"   {r.content[:200]}{'...' if len(r.content) > 200 else ''}")
+            if r.metadata and r.metadata.get('source_file'):
+                print(f"   📁 {r.metadata['source_file']}")
+            print()
+    
+    await manager.disconnect()
+
+
+async def cmd_recent(agent: str):
+    """Show recent memories"""
+    manager = NeuroMemoryManager()
+    await manager.connect()
+    
+    print(f"📅 Recent memories for {agent.upper()}\n")
+    
+    recent = await manager.recall_recent(hours=24, limit=20)
+    
+    if not recent:
+        print("No recent memories.")
+    else:
+        for r in recent:
+            content = r.content[:150] + '...' if len(r.content) > 150 else r.content
+            print(f"• {content}")
+    
+    await manager.disconnect()
+
+
+async def cmd_stats(agent: str):
+    """Show memory statistics"""
+    manager = NeuroMemoryManager()
+    await manager.connect()
+    
+    stats = await manager.get_stats()
+    
+    print_header("MEMORY STATISTICS")
+    print(f"\n⚡ Working Memory (Redis):")
+    print(f"   Status: {stats['working'].get('status', 'unknown')}")
+    print(f"   Items: {stats['working'].get('items_in_cache', 0)}")
+    print(f"   Latency: {stats['working'].get('avg_latency_ms', 0):.2f}ms")
+    
+    print(f"\n📅 Episodic Memory (SQLite):")
+    print(f"   Total: {stats['episodic'].get('total_memories', 0)}")
+    print(f"   High Importance: {stats['episodic'].get('high_importance', 0)}")
+    print(f"   Created 24h: {stats['episodic'].get('created_24h', 0)}")
+    
+    print(f"\n🧠 Semantic Memory (Neo4j):")
+    print(f"   Memories: {stats['semantic'].get('memories', 0)}")
+    print(f"   Entities: {stats['semantic'].get('entities', 0)}")
+    print(f"   Relationships: {stats['semantic'].get('relationships', 0)}")
+    
+    print(f"\n🔧 Procedural Memory (SQLite):")
+    print(f"   Patterns: {stats['procedural'].get('total_patterns', 0)}")
+    print(f"   Executions: {stats['procedural'].get('total_executions', 0)}")
+    print(f"   Success Rate: {stats['procedural'].get('success_rate', 0):.1%}")
+    
+    print()
+    await manager.disconnect()
+
+
+async def cmd_health():
+    """Check health of all memory layers"""
+    print_header("MEMORY SYSTEM HEALTH CHECK")
+    
+    issues = []
+    
+    # Check Redis
+    try:
+        import redis.asyncio as aioredis
+        redis = await aioredis.from_url("redis://localhost:6379")
+        await redis.ping()
+        print("✅ Redis (Working Memory): Connected")
+        await redis.close()
+    except Exception as e:
+        print(f"❌ Redis (Working Memory): {e}")
+        issues.append("Redis unavailable")
+    
+    # Check Neo4j
+    try:
+        from neo4j import GraphDatabase
+        driver = GraphDatabase.driver("bolt://localhost:7687")
+        with driver.session() as session:
+            session.run("RETURN 1").single()
+        print("✅ Neo4j (Semantic Memory): Connected")
+        driver.close()
+    except Exception as e:
+        print(f"❌ Neo4j (Semantic Memory): {e}")
+        issues.append("Neo4j unavailable")
+    
+    # Check SQLite databases
+    import sqlite3
+    
+    for name, path, table in [("Episodic", "/root/.openclaw/memory-system/episodic.db", "memories"),
+                              ("Procedural", "/root/.openclaw/memory-system/procedural.db", "procedures")]:
+        try:
+            conn = sqlite3.connect(path)
+            cursor = conn.cursor()
+            cursor.execute(f"SELECT COUNT(*) FROM {table}")
+            count = cursor.fetchone()[0]
+            print(f"✅ SQLite {name}: {count} records")
+            conn.close()
+        except Exception as e:
+            print(f"❌ SQLite {name}: {e}")
+            issues.append(f"{name} DB issue")
+    
+    print()
+    if issues:
+        print(f"⚠️  Issues found: {', '.join(issues)}")
+        return 1
+    else:
+        print("✅ All systems healthy")
+        return 0
+
+
+async def cmd_sync(agent: str):
+    """Sync workspace files to memory"""
+    print(f"🔄 Syncing {agent.upper()} workspace to memory...\n")
+    
+    try:
+        # Import the sync script
+        sys.path.insert(0, '/root/.openclaw/memory-system/scripts')
+        from memory_sync import sync_agent_workspace
+        
+        results = await sync_agent_workspace(agent)
+        print(f"✅ Synced {results.get('files', 0)} files")
+        print(f"   New: {results.get('new', 0)}")
+        print(f"   Updated: {results.get('updated', 0)}")
+    except Exception as e:
+        print(f"❌ Sync failed: {e}")
+        return 1
+    
+    return 0
+
+
+async def cmd_groom():
+    """Run memory consolidation"""
+    print_header("MEMORY GROOMING")
+    print("\n🧹 Running consolidation...\n")
+    
+    manager = NeuroMemoryManager()
+    await manager.connect()
+    
+    # Run consolidation
+    results = await manager.consolidate()
+    
+    print(f"   Promoted: {results.get('promoted', 0)}")
+    print(f"   Archived: {results.get('archived', 0)}")
+    print(f"   Demoted: {results.get('demoted', 0)}")
+    print()
+    
+    await manager.disconnect()
+    print("✅ Grooming complete")
+
+
+def print_usage():
+    print(__doc__)
+    print("Commands:")
+    print("  session <agent>           Get session startup context")
+    print("  recall <agent> <query>    Search memories")
+    print("  recent <agent>            Recent 24h memories")
+    print("  stats <agent>             Memory statistics")
+    print("  health                    Check all layers")
+    print("  sync <agent>              Sync workspace files")
+    print("  groom                     Run consolidation")
+    print()
+    print("Examples:")
+    print("  neuro-memory session ava")
+    print("  neuro-memory recall eva 'discord bot'")
+    print("  neuro-memory groom")
+
+
+async def main():
+    if len(sys.argv) < 2:
+        print_usage()
+        sys.exit(0)
+    
+    command = sys.argv[1].lower()
+    
+    if command in ['-h', '--help', 'help']:
+        print_usage()
+        sys.exit(0)
+    
+    if command == 'session':
+        if len(sys.argv) < 3:
+            print("Usage: neuro-memory session <agent>")
+            sys.exit(1)
+        await cmd_session(sys.argv[2])
+    
+    elif command == 'recall':
+        if len(sys.argv) < 4:
+            print("Usage: neuro-memory recall <agent> <query>")
+            sys.exit(1)
+        await cmd_recall(sys.argv[2], ' '.join(sys.argv[3:]))
+    
+    elif command == 'recent':
+        if len(sys.argv) < 3:
+            print("Usage: neuro-memory recent <agent>")
+            sys.exit(1)
+        await cmd_recent(sys.argv[2])
+    
+    elif command == 'stats':
+        if len(sys.argv) < 3:
+            print("Usage: neuro-memory stats <agent>")
+            sys.exit(1)
+        await cmd_stats(sys.argv[2])
+    
+    elif command == 'health':
+        sys.exit(await cmd_health())
+    
+    elif command == 'sync':
+        if len(sys.argv) < 3:
+            print("Usage: neuro-memory sync <agent>")
+            sys.exit(1)
+        sys.exit(await cmd_sync(sys.argv[2]) or 0)
+    
+    elif command == 'groom':
+        await cmd_groom()
+    
+    else:
+        print(f"Unknown command: {command}")
+        print_usage()
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

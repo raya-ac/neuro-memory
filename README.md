@@ -202,9 +202,42 @@ asyncio.run(bridge.ingest_workspace())
 results = asyncio.run(bridge.search_across_layers("project status"))
 ```
 
+## The CLI
+
+There's a unified CLI for everything:
+
+```bash
+# Get session context at startup
+neuro-memory session ava
+
+# Search memories
+neuro-memory recall eva "discord bot"
+
+# Recent 24h memories
+neuro-memory recent ava
+
+# Memory statistics
+neuro-memory stats eva
+
+# Health check all 4 layers
+neuro-memory health
+
+# Sync workspace files to memory
+neuro-memory sync ava
+
+# Run consolidation (promote, archive, cleanup)
+neuro-memory groom
+```
+
+Install it:
+
+```bash
+ln -s /path/to/neuro-memory/scripts/neuro-memory /usr/local/bin/neuro-memory
+```
+
 ## The maintenance scripts
 
-There are three standalone scripts in `scripts/`:
+All the old scripts still work if you prefer them:
 
 ```bash
 # Check if everything's working
@@ -216,6 +249,8 @@ There are three standalone scripts in `scripts/`:
 # Sync markdown files from your workspace (run every few hours)
 ./scripts/memory_sync.py
 ```
+
+Or use the unified `neuro-memory` CLI which wraps all of these.
 
 Crontab:
 

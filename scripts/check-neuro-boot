@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""
+Verify that agents have properly initialized NeuroMemory on session start.
+Run periodically to catch sessions that didn't boot correctly.
+"""
+
+import sqlite3
+import json
+from datetime import datetime, timedelta
+from pathlib import Path
+
+EPISODIC_DB = Path("/root/.openclaw/memory-system/episodic.db")
+WORKSPACE_AVA = Path("/root/.openclaw/workspace-ava")
+WORKSPACE_EVA = Path("/root/.openclaw/workspace-eva")
+
+def check_agent_boot(agent_name: str, workspace: Path) -> dict:
+    """Check if an agent has properly booted with NeuroMemory"""
+    result = {
+        "agent": agent_name,
+        "status": "unknown",
+        "issues": []
+    }
+    
+    # Check 1: Today's memory file exists and is recent
+    today_log = workspace / "memory" / f"{datetime.now().strftime('%Y-%m-%d')}.md"
+    if not today_log.exists():
+        result["issues"].append("No daily log for today")
+    else:
+        # Check if it was updated recently (within last hour)
+        mtime = datetime.fromtimestamp(today_log.stat().st_mtime)
+        if datetime.now() - mtime > timedelta(hours=2):
+            result["issues"].append("Daily log stale (>2h old)")
+    
+    # Check 2: Recent episodic memories from this agent
+    try:
+        conn = sqlite3.connect(str(EPISODIC_DB))
+        cursor = conn.cursor()
+        
+        # Check for recent memories (last 30 minutes)
+        cutoff = (datetime.now() - timedelta(minutes=30)).timestamp()
+        cursor.execute("""
+            SELECT COUNT(*) FROM memories
+            WHERE created_at > ?
+        """, (cutoff,))
+        recent_count = cursor.fetchone()[0]
+        
+        if recent_count == 0:
+            result["issues"].append("No recent episodic memories (30m)")
+        
+        conn.close()
+    except Exception as e:
+        result["issues"].append(f"Episodic DB error: {e}")
+    
+    # Determine status
+    if not result["issues"]:
+        result["status"] = "healthy"
+    elif len(result["issues"]) <= 1:
+        result["status"] = "warning"
+    else:
+        result["status"] = "unhealthy"
+    
+    return result
+
+
+def check_active_sessions():
+    """Check if there are active OpenClaw sessions"""
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["openclaw", "sessions", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            return data.get("sessions", [])
+    except:
+        pass
+    return []
+
+
+def main():
+    print(f"\n{'='*60}")
+    print(f"NeuroMemory Boot Verification - {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print(f"{'='*60}\n")
+    
+    agents = [
+        ("ava", WORKSPACE_AVA),
+        ("eva", WORKSPACE_EVA),
+    ]
+    
+    all_healthy = True
+    
+    for agent_name, workspace in agents:
+        result = check_agent_boot(agent_name, workspace)
+        
+        status_icon = {"healthy": "✅", "warning": "⚠️", "unhealthy": "❌"}.get(result["status"], "❓")
+        print(f"{status_icon} {agent_name.upper()}: {result['status']}")
+        
+        if result["issues"]:
+            for issue in result["issues"]:
+                print(f"   • {issue}")
+            all_healthy = False
+        else:
+            print(f"   • All checks passed")
+    
+    # Check active sessions
+    print(f"\n📋 Active Sessions:")
+    sessions = check_active_sessions()
+    if sessions:
+        for s in sessions:
+            print(f"   • {s.get('displayName', s.get('key', 'unknown'))}")
+    else:
+        print("   • No active sessions")
+    
+    print(f"\n{'='*60}")
+    
+    if all_healthy:
+        print("Status: All agents healthy ✅")
+        return 0
+    else:
+        print("Status: Issues detected ⚠️")
+        return 1
+
+
+if __name__ == "__main__":
+    exit(main())

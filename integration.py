@@ -103,11 +103,12 @@ class FileMemoryBridge:
                                 content = f.read()
                             
                             entry = self.file_to_memory_entry(filepath, content)
-                            await self.manager.remember(entry.content, {
-                                'layer': entry.layer.value,
-                                'importance': entry.importance,
-                                'metadata': entry.metadata
-                            })
+                            await self.manager.remember(
+                                entry.content,
+                                layer=entry.layer,
+                                importance=entry.importance,
+                                metadata=entry.metadata
+                            )
                             files_processed += 1
                         except Exception as e:
                             print(f"  ⚠ Error processing {filepath}: {e}")
@@ -122,11 +123,12 @@ class FileMemoryBridge:
                             content = f.read()
                         
                         entry = self.file_to_memory_entry(filepath, content)
-                        await self.manager.remember(entry.content, {
-                            'layer': 'episodic',
-                            'importance': 0.6,
-                            'metadata': entry.metadata
-                        })
+                        await self.manager.remember(
+                            entry.content,
+                            layer=MemoryLayer.EPISODIC,
+                            importance=0.6,
+                            metadata=entry.metadata
+                        )
                         files_processed += 1
                     except Exception as e:
                         print(f"  ⚠ Error processing {filepath}: {e}")
@@ -136,7 +138,7 @@ class FileMemoryBridge:
     
     async def search_across_layers(self, query: str, limit: int = 10) -> List[Dict]:
         """Search across all 4 memory layers"""
-        results = await self.manager.recall(query, {'limit': limit})
+        results = await self.manager.recall(query, limit=limit)
         return [r.to_dict() for r in results]
     
     async def get_context_for_query(self, query: str) -> str:
@@ -154,13 +156,13 @@ class FileMemoryBridge:
     async def promote_important_memories(self):
         """Auto-promote high-importance memories through layers"""
         print(f"\n🔄 Checking for memory promotions...")
-        stats = await self.manager.optimize_layers()
-        print(f"  Promoted: {stats['promoted']}, Demoted: {stats['demoted']}")
+        stats = await self.manager.consolidate()
+        print(f"  Promoted: {stats['promoted']}, Archived: {stats['archived']}")
         return stats
     
-    def get_stats(self) -> Dict[str, Any]:
+    async def get_stats(self) -> Dict[str, Any]:
         """Get memory system statistics"""
-        return self.manager.get_all_stats()
+        return await self.manager.get_stats()
     
     async def close(self):
         """Shutdown memory system"""
@@ -192,7 +194,7 @@ async def main():
     
     # Show stats
     print("\n📊 Ava Memory Stats:")
-    stats = ava_bridge.get_stats()
+    stats = await ava_bridge.get_stats()
     for layer, data in stats.items():
         print(f"  {layer}: {data}")
     

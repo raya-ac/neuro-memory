@@ -40,6 +40,72 @@ Memories flow upward as they become more important. Hot stuff sits in Redis for 
 
 The system handles promotion and demotion automatically. If you keep accessing something, it moves up. If something sits untouched, it eventually gets archived.
 
+## The psychology behind it
+
+This is based on the Atkinson-Shiffrin model from 1968. If you took Psych 101, you've probably seen this:
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                    Atkinson-Shiffrin Memory Model (1968)                  │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│   ┌─────────────┐        ┌─────────────┐        ┌─────────────┐         │
+│   │   Sensory   │        │   Short-    │        │    Long-    │         │
+│   │   Memory    │───────▶│   Term      │───────▶│    Term     │         │
+│   │             │        │   Memory    │        │    Memory   │         │
+│   └─────────────┘        └─────────────┘        └─────────────┘         │
+│         │                      │                      │                  │
+│    < 1 second            15-30 seconds           Lifetime                │
+│    Raw perception        Active processing        Permanent store        │
+│    (vision, sound)       (what you're thinking)   (knowledge, skills)    │
+│                                                                           │
+│                          ┌─────────────────────────────────────┐         │
+│                          │          Long-Term Memory           │         │
+│                          │  ┌───────────┬───────────┬───────┐ │         │
+│                          │  │ Episodic  │ Semantic  │Proced-│ │         │
+│                          │  │           │           │  ural │ │         │
+│                          │  │ Events    │ Facts     │Skills │ │         │
+│                          │  │ Experiences│ Concepts │Habits │ │         │
+│                          │  └───────────┴───────────┴───────┘ │         │
+│                          └─────────────────────────────────────┘         │
+│                                                                           │
+└──────────────────────────────────────────────────────────────────────────┘
+
+                        How NeuroMemory maps to it:
+
+   ┌─────────────────────────────────────────────────────────────────────┐
+   │                                                                     │
+   │   Atkinson-Shiffrin              NeuroMemory                        │
+   │   ─────────────────              ───────────                        │
+   │                                                                     │
+   │   Sensory Memory      ───▶     (not implemented)                   │
+   │   (raw input)                     agents handle this themselves    │
+   │                                                                     │
+   │   Short-Term Memory   ───▶     L1 Working Memory (Redis)           │
+   │   (active thought)               hot cache, 5min TTL               │
+   │                                                                     │
+   │   Long-Term Memory    ───▶     L2-L4 Storage Layers                │
+   │   ─────────────────                                              │
+   │   ├─ Episodic         ───▶     L2 Episodic (SQLite)                │
+   │   │  (what happened)             conversations, events, logs       │
+   │   │                                                              │
+   │   ├─ Semantic         ───▶     L3 Semantic (Neo4j)                 │
+   │   │  (what's true)               knowledge graph, relationships   │
+   │   │                                                              │
+   │   └─ Procedural       ───▶     L4 Procedural (SQLite)             │
+   │      (how to do)                 patterns, skills, procedures     │
+   │                                                                     │
+   └─────────────────────────────────────────────────────────────────────┘
+```
+
+The original model had three stages: sensory, short-term, long-term. Later research split long-term memory into episodic, semantic, and procedural. That's where the four layers come from.
+
+Why does this matter? Because vector databases treat all memory the same. But "I had coffee with Sarah yesterday" and "Sarah is a software engineer" and "I know how to brew coffee" are fundamentally different kinds of information. They should be stored differently, accessed differently, and they decay at different rates.
+
+The Atkinson-Shiffrin model got some things wrong (memory isn't quite this linear), but the core insight holds: different types of memory serve different functions. This system tries to respect that.
+
+---
+
 ## What you need
 
 - Python 3.10+
